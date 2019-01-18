@@ -1,5 +1,24 @@
 #!/usr/local/bin/python3
 
+"""
+This code is designed to test the impact of Elasticsearch settings on high cardinality aggregations.
+An example aggregation that _can_ be slow for "high-cardinality" fields is as follows:
+
+GET high_cardinality_experiment/_search
+{
+  "size": 0,
+  "aggs": {
+    "topn": {
+      "terms": {
+        "field": "high_cardinality_field",
+        "size": 10
+      }
+    }
+  }
+}
+
+"""
+
 import random
 import argparse
 from datetime import datetime
@@ -11,7 +30,7 @@ from elasticsearch import helpers
 # CONSTANTS
 ONE_THOUSAND = 1000
 ONE_MILLION = ONE_THOUSAND * ONE_THOUSAND
-CARDINALITY_RANGE = 10 * ONE_MILLION
+CARDINALITY_RANGE = 1 * ONE_MILLION
 BULK_SIZE = 1 * ONE_THOUSAND
 CARDINALITY_INDEX = 'high_cardinality_experiment'
 
@@ -102,7 +121,7 @@ def insert_high_cardinality_documents():
             docs_for_bulk_insert = []
             bulk_counter = 0
 
-    # before leaving this function, ensure that all data has been flushed 
+    # before leaving this function, ensure that all data has been flushed
     es.indices.refresh(index=CARDINALITY_INDEX)
 
 
@@ -119,6 +138,7 @@ def force_rebuild_of_global_ordinals():
     while True:
         val = random.randint(0, CARDINALITY_RANGE)
 
+        print("inserting doc with val=%s" % val)
         es.index(index=CARDINALITY_INDEX, doc_type='doc', id=None, body={'high_cardinality_field': '%s' % val})
         time.sleep(1) # sleep 1 second
 
