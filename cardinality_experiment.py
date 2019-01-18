@@ -24,7 +24,7 @@ ES_PASSWORD = 'elastic'
 def set_global_vars():
     parser = argparse.ArgumentParser()
     parser.add_argument('-m', '--mode', default='full_experiment', metavar='',
-                        help= "full_experiment | populate_only | slow_inserts_only")
+                        help="full_experiment | populate_only | slow_inserts_only")
     global args
     args = parser.parse_args()
     print("Executing %s with mode=%s" % (parser.prog, args.mode))
@@ -35,6 +35,22 @@ def set_global_vars():
 
 def insert_high_cardinality_documents():
     # We will insert CARDINALITY_RANGE documents. Each doc will have a random string.
+
+    es.indices.delete(index=CARDINALITY_INDEX, ignore=[400, 404])
+    request_body = {
+        "settings": {
+            "index": {
+                "number_of_shards": 1,
+                "number_of_replicas": 0,
+                "queries": {
+                    "cache": {
+                        "enabled": False
+                    }
+                }
+            }
+        }
+    }
+    es.indices.create(index=CARDINALITY_INDEX, body=request_body)
 
     # docs_for_bulk_insert - an array to collect documents for bulk insertion
     docs_for_bulk_insert = []
