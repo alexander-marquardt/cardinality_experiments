@@ -1,8 +1,21 @@
 #!/usr/local/bin/python3
+import random
+import argparse
+from datetime import datetime
+import time
+
+from elasticsearch import Elasticsearch
+from elasticsearch import helpers
 
 """
 This code is designed to test the impact of Elasticsearch settings on high cardinality aggregations.
-An example aggregation that _can_ be slow for "high-cardinality" fields is as follows:
+By default, "global ordinals" are built "lazily" on the first aggregation since the previous refresh,
+which can impact the performance of that first aggregation between refreshes. This code is designed to
+quantify this impact, by generating documents with a high-cardinality field which we will run terms
+aggregations over. We also provide code that allows us to contrast the default "lazy" performance to
+the performance of "eager" building of global ordinals.
+
+An example aggregation that _may_ be slow for a high-cardinality field is as follows:
 
 GET high_cardinality_experiment/_search
 {
@@ -16,23 +29,18 @@ GET high_cardinality_experiment/_search
     }
   }
 }
-
 """
 
-import random
-import argparse
-from datetime import datetime
-import time
-
-from elasticsearch import Elasticsearch
-from elasticsearch import helpers
 
 # CONSTANTS
 ONE_THOUSAND = 1000
 ONE_MILLION = ONE_THOUSAND * ONE_THOUSAND
 CARDINALITY_RANGE = 1 * ONE_MILLION
 BULK_SIZE = 1 * ONE_THOUSAND
-CARDINALITY_INDEX = 'high_cardinality_experiment'
+TIME_BETWEEN_INSERTS_WHILE_RUNNING_AGGS = 1  # wait 1s between each insert. Will force global ordinals to build
+NUMBER_OF_AGGS_PER_INSERT_INTERVAL = 5 # 5 aggs per second (assuming TIME_BETWEEN_INSERTS_WHILE_RUNNING_AGGS=1)
+CARDINALITY_INDEX = 'high_cardinality_index'
+HIGH_CARDINALITY_FIELD = 'high_cardinality_field'
 
 ES_HOST = 'localhost:9200'
 ES_USER = 'elastic'
@@ -57,7 +65,7 @@ BASE_INDEX_MAPPINGS = {
                     'timestamp': {
                         'type': 'date'
                     },
-                    'high_cardinality_field': {
+                    HIGH_CARDINALITY_FIELD: {
                         'type': 'keyword',
                         'ignore_above': 256,
                         'eager_global_ordinals': False  # the default is False, set it explicitly here
@@ -68,9 +76,38 @@ BASE_INDEX_MAPPINGS = {
 
 
 
+AGGREGATION_EXPERIMENTS_TO_RUN = [
+    {
+        "description" : "Default Elasticsearch behavior - 1s refresh, and no eager global ordinals",
+        "refresh_interval": "1s",
+        "eager_global_ordinals": False,
+        "number_of_aggs_per_interval": NUMBER_OF_AGGS_PER_INSERT_INTERVAL,
+    },
+    {
+        "description": "Refresh interval of 1s with eager global ordinals",
+        "refresh_interval": "1s",
+        "eager_global_ordinals": True,
+        "number_of_aggs_per_interval": NUMBER_OF_AGGS_PER_INSERT_INTERVAL,
+    },
+    {
+        "description": "Increase refresh interval to 60s without eager global ordinals",
+        "refresh_interval": "60s",
+        "eager_global_ordinals": False,
+        "number_of_aggs_per_interval": NUMBER_OF_AGGS_PER_INSERT_INTERVAL,
+
+    },
+    {
+        "description": "Increase refresh interval to 60s and enable global ordinals",
+        "refresh_interval": "60s",
+        "eager_global_ordinals": True,
+        "number_of_aggs_per_interval": NUMBER_OF_AGGS_PER_INSERT_INTERVAL,
+    },
+]
+
+
 # Parse the command line options, to determine which section(s) of the code will be executed
-# and
-def set_global_vars():
+# and connect to Elasticsearch
+def initial_setup():
     parser = argparse.ArgumentParser()
     parser.add_argument('-m', '--mode', default='full_experiment', metavar='',
                         help='full_experiment | populate_only | slow_inserts_only')
@@ -109,7 +146,7 @@ def insert_high_cardinality_documents():
             '_type': 'doc',
             '_id': None,
             '_source': {
-                'high_cardinality_field': '%s' % val,
+                HIGH_CARDINALITY_FIELD: '%s' % val,
                 'timestamp': datetime.now()
                 }
             }
@@ -126,7 +163,10 @@ def insert_high_cardinality_documents():
 
 
 # The following function will periodically insert a new document into Elasticsearch to force a rebuild
-# of the global ordinals
+# of the global ordinals (either eagerly or lazily, depending on the settings).
+# After the initial loading of the high-cardinality values, we slow down the loading so that the
+# global ordinals still need to be periodically rebuilt, but so that the size of the index
+# is roughly the same for the different experiments.
 def force_rebuild_of_global_ordinals():
     new_index_settings = {'index':
         {
@@ -139,17 +179,16 @@ def force_rebuild_of_global_ordinals():
         val = random.randint(0, CARDINALITY_RANGE)
 
         print("inserting doc with val=%s" % val)
-        es.index(index=CARDINALITY_INDEX, doc_type='doc', id=None, body={'high_cardinality_field': '%s' % val})
-        time.sleep(1) # sleep 1 second
+        es.index(index=CARDINALITY_INDEX, doc_type='doc', id=None, body={HIGH_CARDINALITY_FIELD: '%s' % val})
+        time.sleep(TIME_BETWEEN_INSERTS_WHILE_RUNNING_AGGS)  # sleep TIME_BETWEEN_INSERTS_WHILE_RUNNING_AGGS seconds
 
 
 def main():
-    set_global_vars()
+    initial_setup()
     if args.mode == 'full_experiment' or args.mode == 'populate_only':
         insert_high_cardinality_documents()
 
     if args.mode == 'full_experiment' or args.mode == 'slow_inserts_only':
         force_rebuild_of_global_ordinals()
-
 
 main()
