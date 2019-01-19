@@ -3,6 +3,8 @@ import random
 import argparse
 from datetime import datetime
 import time
+from multiprocessing.dummy import Pool as ThreadPool
+
 
 from elasticsearch import Elasticsearch
 from elasticsearch import helpers
@@ -10,8 +12,8 @@ from elasticsearch import helpers
 """
 Execute with -h for command line options.
 
-This code is designed to test the impact of Elasticsearch settings on high cardinality aggregations.
-By default, "global ordinals" are built "lazily" on the first aggregation since the previous refresh, 
+This code is designed to test the impact of "global ordinals" and "refresh" on high cardinality aggregations.
+By default, global ordinals are built "lazily" on the first aggregation since the previous refresh, 
 which can impact the performance of that first aggregation between refreshes. 
 
 This code is designed to quantify the impact of the refresh interval and global ordinals. We generate documents with 
@@ -52,7 +54,7 @@ FAST_REFRESH = 1  # in experiment mode, every 1 second do a segment refresh (buf
 SLOW_REFRESH = 60  # in experiment mode, every 60 seconds do a segment refresh (buffer flush)
 
 INSERT_INTERVAL = 1  # During aggs wait 1s between inserts. Ensures recompute of global ordinals after each refresh
-NUMBER_OF_AGGS_PER_INSERT_INTERVAL = 5 # 5 aggs per second (assuming INSERT_INTERVAL=1)
+NUMBER_OF_AGGS_PER_INSERT_INTERVAL = 5  # 5 aggs per second (when INSERT_INTERVAL=1)
 HIGH_HIGH_CARDINALITY_INDEX = 'high_cardinality_experiment'
 HIGH_CARDINALITY_FIELD = 'high_cardinality_field'
 
@@ -96,25 +98,28 @@ AGGREGATION_EXPERIMENTS_TO_RUN = [
         "refresh_interval":  '%ds' % FAST_REFRESH,
         "eager_global_ordinals": False,
         "number_of_aggs_per_insert_interval": NUMBER_OF_AGGS_PER_INSERT_INTERVAL,
+        "experiment_duration_in_seconds": 5*60  # run for 5 minutes
     },
     {
         "description": "Refresh interval of fast with eager global ordinals",
         "refresh_interval":  '%ds' % FAST_REFRESH,
         "eager_global_ordinals": True,
         "number_of_aggs_per_insert_interval": NUMBER_OF_AGGS_PER_INSERT_INTERVAL,
+        "experiment_duration_in_seconds": 5 * 60  # run for 5 minutes
     },
     {
         "description": "Slow refresh interval without eager global ordinals",
         "refresh_interval": '%ds' % SLOW_REFRESH,
         "eager_global_ordinals": False,
         "number_of_aggs_per_insert_interval": NUMBER_OF_AGGS_PER_INSERT_INTERVAL,
-
+        "experiment_duration_in_seconds": 5 * 60  # run for 5 minutes
     },
     {
         "description": "Slow refresh interval and enable global ordinals",
         "refresh_interval": '%ds' % SLOW_REFRESH,
         "eager_global_ordinals": True,
         "number_of_aggs_per_insert_interval": NUMBER_OF_AGGS_PER_INSERT_INTERVAL,
+        "experiment_duration_in_seconds": 5 * 60  # run for 5 minutes
     },
 ]
 
@@ -132,12 +137,18 @@ def initial_setup():
     global es
     es = Elasticsearch([ES_HOST], http_auth=(ES_USER, ES_PASSWORD))
 
+    # Global for communicating to the aggregation threads when then should finish
+    global continue_running_aggs
+    continue_running_aggs = True
+
 
 def bulk_insert_high_cardinality_documents():
     # We will insert CARDINALITY_RANGE documents. Each doc will have a random string.
 
-    es.indices.delete(index=HIGH_HIGH_CARDINALITY_INDEX, ignore=[400, 404])
+    print("Starting bulk insertion of documents")
 
+    print("Deleting index %s" % HIGH_HIGH_CARDINALITY_INDEX)
+    es.indices.delete(index=HIGH_HIGH_CARDINALITY_INDEX, ignore=[400, 404])
 
     request_body = {
         'settings': BASE_INDEX_SETTINGS,
@@ -176,15 +187,58 @@ def bulk_insert_high_cardinality_documents():
     es.indices.refresh(index=HIGH_HIGH_CARDINALITY_INDEX)
 
 
+def run_aggs(thread_number):
+
+    global continue_running_aggs
+
+    print("Starting thread %d" % thread_number)
+    while True:
+        if continue_running_aggs:
+
+            request = {
+                "size": 0,
+                "aggs": {
+                    "topn": {
+                        "terms": {
+                            "field": "high_cardinality_field",
+                            "size": 10
+                        }
+                    }
+                }
+            }
+            print("Thread %d executing search %s" % (thread_number, request))
+            es.search(index=HIGH_HIGH_CARDINALITY_INDEX, doc_type='doc', body=request)
+
+            # The following wait needs to be replaced with a random wait time to give a more realistic
+            # distribution of the aggregations
+            time.sleep(INSERT_INTERVAL)
+        else:
+            break
+
 # The following function will periodically insert a new document into Elasticsearch to force a rebuild
 # of the global ordinals (either eagerly or lazily, depending on the settings).
 # After the initial loading of the high-cardinality values, we slow down the loading so that the
 # global ordinals still need to be periodically rebuilt, but so that the size of the index
 # is roughly the same for the different experiments.
 def run_experiment():
+
+    global continue_running_aggs
+
+    print("Starting experiment")
+
+    # Pool of workers/threads for running aggregations in parallel
+    pool = ThreadPool(NUMBER_OF_AGGS_PER_INSERT_INTERVAL)
+    # open the aggregations in different threads, to run in parallel with the inserts
+    results = pool.map(run_aggs, range(0, NUMBER_OF_AGGS_PER_INSERT_INTERVAL))
+    print('%s' % results)
+
     for experiment in AGGREGATION_EXPERIMENTS_TO_RUN:
-        print("Running experiment: %s\n" % experiment['description'])
-        
+        duration_in_seconds = experiment['experiment_duration_in_seconds']
+        print("Running experiment: %s for %d seconds\n" %
+              (experiment['description'], duration_in_seconds))
+
+        start_time = time.time()
+
         new_index_settings = {'index':
             {
                 'refresh_interval':  experiment['refresh_interval']
@@ -204,12 +258,19 @@ def run_experiment():
         es.indices.put_settings(index=HIGH_HIGH_CARDINALITY_INDEX, body=new_index_settings)
         es.indices.put_mapping(index=HIGH_HIGH_CARDINALITY_INDEX, body=new_index_mappings)
 
-        while True:
+        while time.time() < start_time + duration_in_seconds:
             val = random.randint(0, CARDINALITY_RANGE)
     
             print("inserting doc with val=%s" % val)
             es.index(index=HIGH_HIGH_CARDINALITY_INDEX, doc_type='doc', id=None, body={HIGH_CARDINALITY_FIELD: '%s' % val})
             time.sleep(INSERT_INTERVAL)  # sleep INSERT_INTERVAL seconds
+
+        print('Ended experiment: %s' % experiment['description'])
+
+    # close the thread pool and wait for the work to finish
+    continue_running_aggs = False
+    pool.close()
+    pool.join()
 
 
 def main():
@@ -219,6 +280,7 @@ def main():
 
     if args.mode == 'all' or args.mode == 'experiments_only':
         run_experiment()
+
 
 
 main()
