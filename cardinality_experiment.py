@@ -3,7 +3,7 @@ import random
 import argparse
 from datetime import datetime
 import time
-from multiprocessing.dummy import Pool as ThreadPool
+from threading import Thread
 
 
 from elasticsearch import Elasticsearch
@@ -90,9 +90,7 @@ BASE_INDEX_MAPPINGS = {
             }
         }
 
-
-
-AGGREGATION_EXPERIMENTS_TO_RUN = [
+EXPERIMENTS_TO_RUN = [
     {
         "description" : "Default Elasticsearch behavior - fast refresh, and no eager global ordinals",
         "refresh_interval":  '%ds' % FAST_REFRESH,
@@ -187,14 +185,60 @@ def bulk_insert_high_cardinality_documents():
     es.indices.refresh(index=HIGH_HIGH_CARDINALITY_INDEX)
 
 
-def run_aggs(thread_number):
+# The following function will periodically insert a new document into Elasticsearch to force a rebuild
+# of the global ordinals (either eagerly or lazily, depending on the settings).
+# After the initial loading of the high-cardinality values, we slow down the loading so that the
+# global ordinals still need to be periodically rebuilt, but so that the size of the index
+# is roughly the same for the different experiments.
+def step_through_experiment_configurations(experiments_to_run):
 
     global continue_running_aggs
 
-    print("Starting thread %d" % thread_number)
+    print("Starting experiment configuration thread\n")
+    for experiment in experiments_to_run:
+        experiment_duration_in_seconds = experiment['experiment_duration_in_seconds']
+        print("Running experiment: %s for %d seconds\n" %
+              (experiment['description'], experiment_duration_in_seconds))
+
+        start_time = time.time()
+
+        new_index_settings = {'index':
+            {
+                'refresh_interval': experiment['refresh_interval']
+            }
+        }
+
+        new_index_mappings = {
+            'properties': {
+                HIGH_CARDINALITY_FIELD: {
+                    'type': 'keyword',
+                    'eager_global_ordinals': experiment['eager_global_ordinals']
+                }
+            }
+        }
+
+        es.indices.put_settings(index=HIGH_HIGH_CARDINALITY_INDEX, body=new_index_settings)
+        es.indices.put_mapping(doc_type = 'doc', index=HIGH_HIGH_CARDINALITY_INDEX, body=new_index_mappings)
+
+        while time.time() < start_time + experiment_duration_in_seconds:
+            val = random.randint(0, CARDINALITY_RANGE)
+
+            print("inserting doc with val=%s" % val)
+            es.index(index=HIGH_HIGH_CARDINALITY_INDEX, doc_type='doc', id=None,
+                     body={HIGH_CARDINALITY_FIELD: '%s' % val})
+            time.sleep(INSERT_INTERVAL)  # sleep INSERT_INTERVAL seconds
+
+        print('Ended experiment: %s' % experiment['description'])
+
+    # close the thread pool and wait for the work to finish
+    continue_running_aggs = False
+
+
+def run_aggs(thread_number):
+
+    print("Starting aggregation thread %d" % thread_number)
     while True:
         if continue_running_aggs:
-
             request = {
                 "size": 0,
                 "aggs": {
@@ -207,7 +251,8 @@ def run_aggs(thread_number):
                 }
             }
             print("Thread %d executing search %s" % (thread_number, request))
-            es.search(index=HIGH_HIGH_CARDINALITY_INDEX, doc_type='doc', body=request)
+            result=es.search(index=HIGH_HIGH_CARDINALITY_INDEX, doc_type='doc', body=request)
+            print("Time for agg on thread %d is %d" % (thread_number, result['took']))
 
             # The following wait needs to be replaced with a random wait time to give a more realistic
             # distribution of the aggregations
@@ -215,62 +260,27 @@ def run_aggs(thread_number):
         else:
             break
 
-# The following function will periodically insert a new document into Elasticsearch to force a rebuild
-# of the global ordinals (either eagerly or lazily, depending on the settings).
-# After the initial loading of the high-cardinality values, we slow down the loading so that the
-# global ordinals still need to be periodically rebuilt, but so that the size of the index
-# is roughly the same for the different experiments.
+
 def run_experiment():
 
     global continue_running_aggs
 
     print("Starting experiment")
 
-    # Pool of workers/threads for running aggregations in parallel
-    pool = ThreadPool(NUMBER_OF_AGGS_PER_INSERT_INTERVAL)
-    # open the aggregations in different threads, to run in parallel with the inserts
-    results = pool.map(run_aggs, range(0, NUMBER_OF_AGGS_PER_INSERT_INTERVAL))
-    print('%s' % results)
+    my_threads = []
 
-    for experiment in AGGREGATION_EXPERIMENTS_TO_RUN:
-        duration_in_seconds = experiment['experiment_duration_in_seconds']
-        print("Running experiment: %s for %d seconds\n" %
-              (experiment['description'], duration_in_seconds))
+    my_threads.append(Thread(target=step_through_experiment_configurations, args=(EXPERIMENTS_TO_RUN,)))
 
-        start_time = time.time()
+    for x in range(0, NUMBER_OF_AGGS_PER_INSERT_INTERVAL):
+        my_threads.append(Thread(target=run_aggs, args=(x,)))
 
-        new_index_settings = {'index':
-            {
-                'refresh_interval':  experiment['refresh_interval']
-            }
-        }
-        
-        new_index_mappings = {
-            'doc': {
-                'properties': {
-                    HIGH_CARDINALITY_FIELD: {
-                        'eager_global_ordinals': experiment['eager_global_ordinals']
-                    }
-                }
-            }
-        }
-    
-        es.indices.put_settings(index=HIGH_HIGH_CARDINALITY_INDEX, body=new_index_settings)
-        es.indices.put_mapping(index=HIGH_HIGH_CARDINALITY_INDEX, body=new_index_mappings)
+    for t in my_threads:
+        t.start()
 
-        while time.time() < start_time + duration_in_seconds:
-            val = random.randint(0, CARDINALITY_RANGE)
-    
-            print("inserting doc with val=%s" % val)
-            es.index(index=HIGH_HIGH_CARDINALITY_INDEX, doc_type='doc', id=None, body={HIGH_CARDINALITY_FIELD: '%s' % val})
-            time.sleep(INSERT_INTERVAL)  # sleep INSERT_INTERVAL seconds
+    # Wait for all threads to complete before terminating
+    for t in my_threads:
+        t.join()
 
-        print('Ended experiment: %s' % experiment['description'])
-
-    # close the thread pool and wait for the work to finish
-    continue_running_aggs = False
-    pool.close()
-    pool.join()
 
 
 def main():
@@ -280,7 +290,6 @@ def main():
 
     if args.mode == 'all' or args.mode == 'experiments_only':
         run_experiment()
-
 
 
 main()
