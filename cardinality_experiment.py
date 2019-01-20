@@ -46,7 +46,7 @@ GET high_cardinality_experiment/_search
 # CONSTANTS
 ONE_THOUSAND = 1000
 ONE_MILLION = ONE_THOUSAND * ONE_THOUSAND
-CARDINALITY_RANGE = 1 * ONE_MILLION
+CARDINALITY_RANGE = 5 * ONE_MILLION
 BULK_SIZE = 1 * ONE_THOUSAND
 
 FAST_REFRESH = 1  # in experiment mode, every X second do a segment refresh (buffer flush)
