@@ -1,10 +1,9 @@
 #!/usr/local/bin/python3
 import random
 import argparse
-from datetime import datetime
 import time
 from threading import Thread
-
+from datetime import datetime
 
 from elasticsearch import Elasticsearch
 from elasticsearch import helpers
@@ -50,8 +49,9 @@ ONE_MILLION = ONE_THOUSAND * ONE_THOUSAND
 CARDINALITY_RANGE = 1 * ONE_MILLION
 BULK_SIZE = 1 * ONE_THOUSAND
 
-FAST_REFRESH = 1  # in experiment mode, every 1 second do a segment refresh (buffer flush)
-SLOW_REFRESH = 60  # in experiment mode, every 60 seconds do a segment refresh (buffer flush)
+FAST_REFRESH = 1  # in experiment mode, every X second do a segment refresh (buffer flush)
+SLOW_REFRESH = 10  # in experiment mode, every X seconds do a segment refresh (buffer flush)
+EXPERIMENT_DURATION = 2*60
 
 INSERT_INTERVAL = 1  # During aggs wait 1s between inserts. Ensures recompute of global ordinals after each refresh
 NUMBER_OF_AGGS_PER_INSERT_INTERVAL = 5  # 5 aggs per second (when INSERT_INTERVAL=1)
@@ -90,36 +90,37 @@ BASE_INDEX_MAPPINGS = {
             }
         }
 
-EXPERIMENTS_TO_RUN = [
-    {
-        "description" : "Default Elasticsearch behavior - fast refresh, and no eager global ordinals",
-        "refresh_interval":  '%ds' % FAST_REFRESH,
-        "eager_global_ordinals": False,
+
+EXPERIMENT_PARAMETERS = [{"refresh_interval":  '%ds' % FAST_REFRESH,
+                          "eager_global_ordinals": False,},
+                         {"refresh_interval":  '%ds' % FAST_REFRESH,
+                          "eager_global_ordinals": True,},
+                         {"refresh_interval": '%ds' % SLOW_REFRESH,
+                          "eager_global_ordinals": False,},
+                         {"refresh_interval": '%ds' % SLOW_REFRESH,
+                          "eager_global_ordinals": True,}
+                         ]
+
+start_time_string = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+print("start %s" % start_time_string)
+
+EXPERIMENTS_TO_RUN = []
+for exp_obj in EXPERIMENT_PARAMETERS:
+
+    eager_global_ordinals = exp_obj['eager_global_ordinals']
+    refresh_interval = exp_obj['refresh_interval']
+    result_index = 'refresh-%s-eager_global_ordinals-%s-%s' % (
+            refresh_interval, eager_global_ordinals, start_time_string)
+    result_index=result_index.lower()
+
+    EXPERIMENTS_TO_RUN.append({
+        "description" : "Refresh: %s and eager_global_ordinals: %s" % (refresh_interval, eager_global_ordinals),
+        "refresh_interval": refresh_interval,
+        "eager_global_ordinals": eager_global_ordinals,
         "number_of_aggs_per_insert_interval": NUMBER_OF_AGGS_PER_INSERT_INTERVAL,
-        "experiment_duration_in_seconds": 5*60  # run for 5 minutes
-    },
-    {
-        "description": "Refresh interval of fast with eager global ordinals",
-        "refresh_interval":  '%ds' % FAST_REFRESH,
-        "eager_global_ordinals": True,
-        "number_of_aggs_per_insert_interval": NUMBER_OF_AGGS_PER_INSERT_INTERVAL,
-        "experiment_duration_in_seconds": 5 * 60  # run for 5 minutes
-    },
-    {
-        "description": "Slow refresh interval without eager global ordinals",
-        "refresh_interval": '%ds' % SLOW_REFRESH,
-        "eager_global_ordinals": False,
-        "number_of_aggs_per_insert_interval": NUMBER_OF_AGGS_PER_INSERT_INTERVAL,
-        "experiment_duration_in_seconds": 5 * 60  # run for 5 minutes
-    },
-    {
-        "description": "Slow refresh interval and enable global ordinals",
-        "refresh_interval": '%ds' % SLOW_REFRESH,
-        "eager_global_ordinals": True,
-        "number_of_aggs_per_insert_interval": NUMBER_OF_AGGS_PER_INSERT_INTERVAL,
-        "experiment_duration_in_seconds": 5 * 60  # run for 5 minutes
-    },
-]
+        "experiment_duration_in_seconds": EXPERIMENT_DURATION,
+        'result_index': result_index,
+    })
 
 
 # Parse the command line options, to determine which section(s) of the code will be executed
@@ -135,9 +136,12 @@ def initial_setup():
     global es
     es = Elasticsearch([ES_HOST], http_auth=(ES_USER, ES_PASSWORD))
 
-    # Global for communicating to the aggregation threads when then should finish
+    # Global for communicating to the aggregation threads when to finish
     global continue_running_aggs
     continue_running_aggs = True
+
+    global current_result_index
+    current_result_index = 'result_index_not_set'
 
 
 def bulk_insert_high_cardinality_documents():
@@ -185,22 +189,24 @@ def bulk_insert_high_cardinality_documents():
     es.indices.refresh(index=HIGH_HIGH_CARDINALITY_INDEX)
 
 
-# The following function will periodically insert a new document into Elasticsearch to force a rebuild
-# of the global ordinals (either eagerly or lazily, depending on the settings).
-# After the initial loading of the high-cardinality values, we slow down the loading so that the
-# global ordinals still need to be periodically rebuilt, but so that the size of the index
-# is roughly the same for the different experiments.
+# The following function steps through the experiments that we have defined, and
+# sets the cluster to the required state for the required amount of time.
+# Additionally, this will periodically insert a new document into Elasticsearch to force a rebuild
+# of the global ordinals.
 def step_through_experiment_configurations(experiments_to_run):
 
     global continue_running_aggs
+    global current_result_index
 
-    print("Starting experiment configuration thread\n")
+    print("Starting experiment configuration control thread\n")
     for experiment in experiments_to_run:
         experiment_duration_in_seconds = experiment['experiment_duration_in_seconds']
         print("Running experiment: %s for %d seconds\n" %
               (experiment['description'], experiment_duration_in_seconds))
 
         start_time = time.time()
+
+        current_result_index = experiment['result_index']
 
         new_index_settings = {'index':
             {
@@ -218,7 +224,7 @@ def step_through_experiment_configurations(experiments_to_run):
         }
 
         es.indices.put_settings(index=HIGH_HIGH_CARDINALITY_INDEX, body=new_index_settings)
-        es.indices.put_mapping(doc_type = 'doc', index=HIGH_HIGH_CARDINALITY_INDEX, body=new_index_mappings)
+        es.indices.put_mapping(doc_type='doc', index=HIGH_HIGH_CARDINALITY_INDEX, body=new_index_mappings)
 
         while time.time() < start_time + experiment_duration_in_seconds:
             val = random.randint(0, CARDINALITY_RANGE)
@@ -237,6 +243,8 @@ def step_through_experiment_configurations(experiments_to_run):
 def run_aggs(thread_number):
 
     print("Starting aggregation thread %d" % thread_number)
+
+    docs_for_bulk_insert = []
     while True:
         if continue_running_aggs:
             request = {
@@ -254,10 +262,26 @@ def run_aggs(thread_number):
             result=es.search(index=HIGH_HIGH_CARDINALITY_INDEX, doc_type='doc', body=request)
             print("Time for agg on thread %d is %d" % (thread_number, result['took']))
 
-            # The following wait needs to be replaced with a random wait time to give a more realistic
-            # distribution of the aggregations
-            time.sleep(INSERT_INTERVAL)
+            # Store the time for each aggregation into ES - but cache in an in-memory data structure
+            # to minimize the impact on the cluster.
+            action = {
+                '_index': current_result_index,
+                '_type': 'doc',
+                '_id': None,
+                '_source': {
+                    'took': result['took'],
+                    'timestamp': datetime.now()
+                }
+            }
+            docs_for_bulk_insert.append(action)
+
+            # Wait a random amount of time between 0 and 2*INSERT_INTERVAL before running the next agg.
+            # This will result in one agg per aggregation thread (or a total of NUMBER_OF_AGGS_PER_INSERT_INTERVAL
+            # aggregations) for each new document insertion.
+            time.sleep(random.uniform(0, 2*INSERT_INTERVAL))
         else:
+            # At the end of the experiment, write the experimental results to the ES cluster
+            helpers.bulk(es, docs_for_bulk_insert)
             break
 
 
@@ -265,10 +289,9 @@ def run_experiment():
 
     global continue_running_aggs
 
-    print("Starting experiment")
+    print("Spinning up threads for the experiment")
 
-    my_threads = []
-
+    my_threads=[]
     my_threads.append(Thread(target=step_through_experiment_configurations, args=(EXPERIMENTS_TO_RUN,)))
 
     for x in range(0, NUMBER_OF_AGGS_PER_INSERT_INTERVAL):
@@ -280,7 +303,6 @@ def run_experiment():
     # Wait for all threads to complete before terminating
     for t in my_threads:
         t.join()
-
 
 
 def main():
