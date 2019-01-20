@@ -54,8 +54,9 @@ SLOW_REFRESH = 5  # in experiment mode, every X seconds do a segment refresh (bu
 EXPERIMENT_DURATION = 20
 SLEEP_BETWEEN_EXPERIMENTS = 5  # seconds to wait after completing an experiment before the next one
 
-INSERT_INTERVAL = 1  # During aggs wait 1s between inserts. Ensures recompute of global ordinals
-NUMBER_OF_AGGS_PER_INSERT_INTERVAL = 1  # X aggs per INSERT_INTERVAL seconds
+INSERT_INTERVAL = 1  # During aggs experiment, wait 1s between inserts. Ensures recompute of global ordinals
+NUM_AGG_THREADS = 1  # X aggs threads running in parallel.
+TIME_UNTIL_NEXT_AGG_IN_THREAD = (0, 1)  # choose a random number in this range to wait before next agg on each thread
 HIGH_HIGH_CARDINALITY_INDEX = 'high_cardinality_experiment'
 HIGH_CARDINALITY_FIELD = 'high_cardinality_field'
 
@@ -177,7 +178,6 @@ def initial_setup():
             "description": "Refresh: %s and eager_global_ordinals: %s" % (refresh_interval, eager_global_ordinals),
             "refresh_interval": refresh_interval,
             "eager_global_ordinals": eager_global_ordinals,
-            "number_of_aggs_per_insert_interval": NUMBER_OF_AGGS_PER_INSERT_INTERVAL,
             "experiment_duration_in_seconds": EXPERIMENT_DURATION,
             'result_index': result_index,
             'experiment_id': 'Refresh=%s Eager=%s' % (refresh_interval, eager_global_ordinals)
@@ -337,10 +337,8 @@ def run_aggs(thread_number):
                 print('Adding result doc %s' % action)
                 docs_for_bulk_insert.append(action)
 
-                # Wait a random amount of time between 0 and 2*INSERT_INTERVAL before running the next agg.
-                # This will avg of one agg per aggregation thread (or a total of NUMBER_OF_AGGS_PER_INSERT_INTERVAL
-                # aggregations) for each new document insertion.
-                time.sleep(random.uniform(0, 2*INSERT_INTERVAL))
+                # Wait a random amount of time before starting the next aggregation.
+                time.sleep(random.uniform(*TIME_UNTIL_NEXT_AGG_IN_THREAD))
 
         else:  # if !continue_running_aggs - then stop the experiment and write data to the cluster
             # At the end of the experiment, write the experimental results to the ES cluster
@@ -357,7 +355,7 @@ def run_experiment():
     my_threads=[]
     my_threads.append(Thread(target=step_through_experiment_configurations, args=(EXPERIMENTS_TO_RUN,)))
 
-    for x in range(0, NUMBER_OF_AGGS_PER_INSERT_INTERVAL):
+    for x in range(0, NUM_AGG_THREADS):
         my_threads.append(Thread(target=run_aggs, args=(x,)))
 
     for t in my_threads:
