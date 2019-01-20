@@ -102,6 +102,14 @@ BASE_INDEX_MAPPINGS = {
             }
         }
 
+RESULT_INDEX_SETTINGS = {
+            'index': {
+                'refresh_interval':'1s',
+                'number_of_shards': 1,
+                'number_of_replicas': 0,
+            }
+        }
+
 RESULT_INDICES_MAPPINGS = {
             'doc': {
                 'properties': {
@@ -184,6 +192,7 @@ def initial_setup():
 
     for exp_obj in EXPERIMENTS_TO_RUN:
         request_body = {
+            'settings': RESULT_INDEX_SETTINGS,
             'mappings': RESULT_INDICES_MAPPINGS
         }
         es.indices.create(index=exp_obj['result_index'], body=request_body)
