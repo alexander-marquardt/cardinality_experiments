@@ -201,8 +201,6 @@ def initial_setup():
 def bulk_insert_high_cardinality_documents():
     # We will insert CARDINALITY_RANGE documents. Each doc will have a random string.
 
-    print("Starting bulk insertion of documents")
-
     print("Deleting index %s" % HIGH_HIGH_CARDINALITY_INDEX)
     es.indices.delete(index=HIGH_HIGH_CARDINALITY_INDEX, ignore=[400, 404])
 
@@ -217,6 +215,7 @@ def bulk_insert_high_cardinality_documents():
     # bulk_counter - track how many documents are in the actions array
     bulk_counter = 0
 
+    print("Starting bulk insertion of documents")
     for n in range(0, CARDINALITY_RANGE):
 
         # Generate a new document with a random string from 0..CARDINALITY_RANGE-1, and store it into
