@@ -45,12 +45,12 @@ GET high_cardinality_experiment/_search
 # CONSTANTS
 ONE_THOUSAND = 1000
 ONE_MILLION = ONE_THOUSAND * ONE_THOUSAND
-CARDINALITY_RANGE = 5 * ONE_MILLION
+CARDINALITY_RANGE = 1 * ONE_MILLION
 BULK_SIZE = 1 * ONE_THOUSAND
 
 FAST_REFRESH = 1  # in experiment mode, every X second do a segment refresh (buffer flush)
 SLOW_REFRESH = 60  # in experiment mode, every X seconds do a segment refresh (buffer flush)
-EXPERIMENT_DURATION = 10*60  # Each experiment will last this many seconds. Note that we execute multiple experiments.
+EXPERIMENT_DURATION = 5*60  # Each experiment will last this many seconds. Note that we execute multiple experiments.
 SLEEP_BETWEEN_EXPERIMENTS = 60  # seconds to wait after completing an experiment before the next one
 
 INSERT_INTERVAL = 1  # During aggs experiment, wait 1s between inserts. Ensures recompute of global ordinals
