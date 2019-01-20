@@ -51,10 +51,10 @@ BULK_SIZE = 1 * ONE_THOUSAND
 FAST_REFRESH = 1  # in experiment mode, every X second do a segment refresh (buffer flush)
 SLOW_REFRESH = 60  # in experiment mode, every X seconds do a segment refresh (buffer flush)
 EXPERIMENT_DURATION = 5*60  # Each experiment will last this many seconds. Note that we execute multiple experiments.
-SLEEP_BETWEEN_EXPERIMENTS = 60  # seconds to wait after completing an experiment before the next one
+SLEEP_BETWEEN_EXPERIMENTS = 30  # seconds to wait after completing an experiment before the next one
 
 INSERT_INTERVAL = 1  # During aggs experiment, wait 1s between inserts. Ensures recompute of global ordinals
-NUM_AGG_THREADS = 1  # X threads running in parallel for running parallel aggregations.
+NUM_AGG_THREADS = 4  # X threads running in parallel for running parallel aggregations.
 TIME_UNTIL_NEXT_AGG_IN_THREAD = (0, 1)  # choose a random number in this range to wait before next agg on each thread
 HIGH_HIGH_CARDINALITY_INDEX = 'high_cardinality_experiment'
 HIGH_CARDINALITY_FIELD = 'high_cardinality_field'
