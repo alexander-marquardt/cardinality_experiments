@@ -50,9 +50,9 @@ CARDINALITY_RANGE = 1 * ONE_MILLION
 BULK_SIZE = 1 * ONE_THOUSAND
 
 FAST_REFRESH = 1  # in experiment mode, every X second do a segment refresh (buffer flush)
-SLOW_REFRESH = 5  # in experiment mode, every X seconds do a segment refresh (buffer flush)
-EXPERIMENT_DURATION = 20
-SLEEP_BETWEEN_EXPERIMENTS = 5  # seconds to wait after completing an experiment before the next one
+SLOW_REFRESH = 60  # in experiment mode, every X seconds do a segment refresh (buffer flush)
+EXPERIMENT_DURATION = 10*60
+SLEEP_BETWEEN_EXPERIMENTS = 60  # seconds to wait after completing an experiment before the next one
 
 INSERT_INTERVAL = 1  # During aggs experiment, wait 1s between inserts. Ensures recompute of global ordinals
 NUM_AGG_THREADS = 1  # X aggs threads running in parallel.
