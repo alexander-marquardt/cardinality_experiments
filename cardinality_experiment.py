@@ -54,7 +54,7 @@ EXPERIMENT_DURATION = 5*60  # Each experiment will last this many seconds. Note 
 SLEEP_BETWEEN_EXPERIMENTS = 30  # seconds to wait after completing an experiment before the next one
 
 INSERT_INTERVAL = 1  # During aggs experiment, wait 1s between inserts. Ensures recompute of global ordinals
-NUM_AGG_THREADS = 4  # X threads running in parallel for running parallel aggregations.
+NUM_AGG_THREADS = 1  # X threads running parallel aggregations.
 TIME_UNTIL_NEXT_AGG_IN_THREAD = (0, 1)  # choose a random number in this range to wait before next agg on each thread
 HIGH_HIGH_CARDINALITY_INDEX = 'high_cardinality_experiment'
 HIGH_CARDINALITY_FIELD = 'high_cardinality_field'
@@ -287,7 +287,7 @@ def step_through_experiment_configurations(experiments_to_run):
         while time.time() < start_time + experiment_duration_in_seconds:
             val = random.randint(0, CARDINALITY_RANGE)
 
-            print("inserting doc with val=%s" % val)
+            # print("inserting doc with val=%s" % val)
             es.index(index=HIGH_HIGH_CARDINALITY_INDEX, doc_type='doc', id=None,
                      body={HIGH_CARDINALITY_FIELD: '%s' % val})
             time.sleep(INSERT_INTERVAL)  # sleep INSERT_INTERVAL seconds
@@ -324,9 +324,9 @@ def run_aggs(thread_number):
                     }
                 }
             }
-            print("Thread %d executing search %s" % (thread_number, request))
+            # print("Thread %d executing search %s" % (thread_number, request))
             result=es.search(index=HIGH_HIGH_CARDINALITY_INDEX, doc_type='doc', body=request)
-            print("Time for agg on thread %d is %d" % (thread_number, result['took']))
+            # print("Time for agg on thread %d is %d" % (thread_number, result['took']))
 
             # Store the time for each aggregation into ES - but cache in an in-memory data structure
             # to minimize the impact on the cluster. If current_result_index or experiment_id are not
@@ -342,7 +342,7 @@ def run_aggs(thread_number):
                         'experiment_id': experiment_id
                     }
                 }
-                print('Adding result doc %s' % action)
+                # print('Adding result doc %s' % action)
                 docs_for_bulk_insert.append(action)
 
                 # Wait a random amount of time before starting the next aggregation.
