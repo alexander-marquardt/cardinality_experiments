@@ -50,11 +50,12 @@ CARDINALITY_RANGE = 1 * ONE_MILLION
 BULK_SIZE = 1 * ONE_THOUSAND
 
 FAST_REFRESH = 1  # in experiment mode, every X second do a segment refresh (buffer flush)
-SLOW_REFRESH = 10  # in experiment mode, every X seconds do a segment refresh (buffer flush)
-EXPERIMENT_DURATION = 2*60
+SLOW_REFRESH = 5  # in experiment mode, every X seconds do a segment refresh (buffer flush)
+EXPERIMENT_DURATION = 20
+SLEEP_BETWEEN_EXPERIMENTS = 5  # seconds to wait after completing an experiment before the next one
 
-INSERT_INTERVAL = 1  # During aggs wait 1s between inserts. Ensures recompute of global ordinals after each refresh
-NUMBER_OF_AGGS_PER_INSERT_INTERVAL = 5  # 5 aggs per second (when INSERT_INTERVAL=1)
+INSERT_INTERVAL = 1  # During aggs wait 1s between inserts. Ensures recompute of global ordinals
+NUMBER_OF_AGGS_PER_INSERT_INTERVAL = 1  # X aggs per INSERT_INTERVAL seconds
 HIGH_HIGH_CARDINALITY_INDEX = 'high_cardinality_experiment'
 HIGH_CARDINALITY_FIELD = 'high_cardinality_field'
 
@@ -90,6 +91,23 @@ BASE_INDEX_MAPPINGS = {
             }
         }
 
+RESULT_INDICES_MAPPINGS = {
+            'doc': {
+                'properties': {
+                    'timestamp': {
+                        'type': 'date'
+                    },
+                    'took': {
+                        'type': 'long',
+                    },
+                    'experiment_id': {
+                        'type': 'keyword',
+                        'ignore_above': 256
+                    }
+                }
+            }
+        }
+
 
 EXPERIMENT_PARAMETERS = [{"refresh_interval":  '%ds' % FAST_REFRESH,
                           "eager_global_ordinals": False,},
@@ -101,26 +119,7 @@ EXPERIMENT_PARAMETERS = [{"refresh_interval":  '%ds' % FAST_REFRESH,
                           "eager_global_ordinals": True,}
                          ]
 
-start_time_string = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
-print("start %s" % start_time_string)
-
 EXPERIMENTS_TO_RUN = []
-for exp_obj in EXPERIMENT_PARAMETERS:
-
-    eager_global_ordinals = exp_obj['eager_global_ordinals']
-    refresh_interval = exp_obj['refresh_interval']
-    result_index = 'refresh-%s-eager_global_ordinals-%s-%s' % (
-            refresh_interval, eager_global_ordinals, start_time_string)
-    result_index=result_index.lower()
-
-    EXPERIMENTS_TO_RUN.append({
-        "description" : "Refresh: %s and eager_global_ordinals: %s" % (refresh_interval, eager_global_ordinals),
-        "refresh_interval": refresh_interval,
-        "eager_global_ordinals": eager_global_ordinals,
-        "number_of_aggs_per_insert_interval": NUMBER_OF_AGGS_PER_INSERT_INTERVAL,
-        "experiment_duration_in_seconds": EXPERIMENT_DURATION,
-        'result_index': result_index,
-    })
 
 
 # Parse the command line options, to determine which section(s) of the code will be executed
@@ -133,6 +132,9 @@ def initial_setup():
     args = parser.parse_args()
     print('Executing %s with mode=%s' % (parser.prog, args.mode))
 
+    start_time_string = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+    print("start %s" % start_time_string)
+
     global es
     es = Elasticsearch([ES_HOST], http_auth=(ES_USER, ES_PASSWORD))
 
@@ -141,7 +143,34 @@ def initial_setup():
     continue_running_aggs = True
 
     global current_result_index
-    current_result_index = 'result_index_not_set'
+    current_result_index = None
+
+    global experiment_id
+    experiment_id = None
+
+    global EXPERIMENTS_TO_RUN
+    for exp_obj in EXPERIMENT_PARAMETERS:
+        eager_global_ordinals = exp_obj['eager_global_ordinals']
+        refresh_interval = exp_obj['refresh_interval']
+        result_index = 'experiment-%s-refresh-%s-eager_global_ordinals-%s' % (
+            start_time_string, refresh_interval, eager_global_ordinals)
+        result_index = result_index.lower()
+
+        EXPERIMENTS_TO_RUN.append({
+            "description": "Refresh: %s and eager_global_ordinals: %s" % (refresh_interval, eager_global_ordinals),
+            "refresh_interval": refresh_interval,
+            "eager_global_ordinals": eager_global_ordinals,
+            "number_of_aggs_per_insert_interval": NUMBER_OF_AGGS_PER_INSERT_INTERVAL,
+            "experiment_duration_in_seconds": EXPERIMENT_DURATION,
+            'result_index': result_index,
+            'experiment_id': 'Refresh=%s Eager=%s' % (refresh_interval, eager_global_ordinals)
+        })
+
+    for exp_obj in EXPERIMENTS_TO_RUN:
+        request_body = {
+            'mappings': RESULT_INDICES_MAPPINGS
+        }
+        es.indices.create(index=exp_obj['result_index'], body=request_body)
 
 
 def bulk_insert_high_cardinality_documents():
@@ -197,6 +226,7 @@ def step_through_experiment_configurations(experiments_to_run):
 
     global continue_running_aggs
     global current_result_index
+    global experiment_id
 
     print("Starting experiment configuration control thread\n")
     for experiment in experiments_to_run:
@@ -207,6 +237,7 @@ def step_through_experiment_configurations(experiments_to_run):
         start_time = time.time()
 
         current_result_index = experiment['result_index']
+        experiment_id = experiment['experiment_id']
 
         new_index_settings = {'index':
             {
@@ -235,6 +266,9 @@ def step_through_experiment_configurations(experiments_to_run):
             time.sleep(INSERT_INTERVAL)  # sleep INSERT_INTERVAL seconds
 
         print('Ended experiment: %s' % experiment['description'])
+        time.sleep(SLEEP_BETWEEN_EXPERIMENTS)
+        current_result_index = None
+        experiment_id = None
 
     # close the thread pool and wait for the work to finish
     continue_running_aggs = False
@@ -262,15 +296,17 @@ def run_aggs(thread_number):
             result=es.search(index=HIGH_HIGH_CARDINALITY_INDEX, doc_type='doc', body=request)
             print("Time for agg on thread %d is %d" % (thread_number, result['took']))
 
-            # Store the time for each aggregation into ES - but cache in an in-memory data structure
-            # to minimize the impact on the cluster.
+        # Store the time for each aggregation into ES - but cache in an in-memory data structure
+        # to minimize the impact on the cluster.
+        if current_result_index and experiment_id:
             action = {
                 '_index': current_result_index,
                 '_type': 'doc',
                 '_id': None,
                 '_source': {
                     'took': result['took'],
-                    'timestamp': datetime.now()
+                    'timestamp': datetime.now(),
+                    'experiment_id': experiment_id
                 }
             }
             docs_for_bulk_insert.append(action)
@@ -280,7 +316,7 @@ def run_aggs(thread_number):
             # aggregations) for each new document insertion.
             time.sleep(random.uniform(0, 2*INSERT_INTERVAL))
         else:
-            # At the end of the experiment, write the experimental results to the ES cluster
+            # At the end of the experiment, write the experimental results (for all experiments) to the ES cluster
             helpers.bulk(es, docs_for_bulk_insert)
             break
 
