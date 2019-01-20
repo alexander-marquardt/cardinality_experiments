@@ -63,14 +63,25 @@ ES_HOST = 'localhost:9200'
 ES_USER = 'elastic'
 ES_PASSWORD = 'elastic'
 
+# Settings for the index which we run terms aggregations against. We disable caching to isolate the impact
+# of the global ordinals calculations.
 BASE_INDEX_SETTINGS = {
             'index': {
                 'refresh_interval':'1s',
                 'number_of_shards': 1,
                 'number_of_replicas': 0,
+                # Disable query cache:
+                # https://www.elastic.co/guide/en/elasticsearch/reference/current/query-cache.html
                 'queries': {
                     'cache': {
                         'enabled': False  # disable query cache to isolate the impact of global ordinals
+                    }
+                },
+                # Disable shard request cache:
+                # https://www.elastic.co/guide/en/elasticsearch/reference/current/shard-request-cache.html
+                'requests': {
+                    'cache': {
+                        'enable': False
                     }
                 }
             }
@@ -120,6 +131,12 @@ EXPERIMENT_PARAMETERS = [{"refresh_interval":  '%ds' % FAST_REFRESH,
                          ]
 
 EXPERIMENTS_TO_RUN = []
+
+# Global variables that are used in multiple threads
+es = None
+continue_running_aggs = None
+current_result_index = None
+experiment_id = None
 
 
 # Parse the command line options, to determine which section(s) of the code will be executed
@@ -239,6 +256,8 @@ def step_through_experiment_configurations(experiments_to_run):
         current_result_index = experiment['result_index']
         experiment_id = experiment['experiment_id']
 
+        print("*** Setting index to %s and experiment_id to %s" % (current_result_index, experiment_id))
+
         new_index_settings = {'index':
             {
                 'refresh_interval': experiment['refresh_interval']
@@ -265,16 +284,21 @@ def step_through_experiment_configurations(experiments_to_run):
                      body={HIGH_CARDINALITY_FIELD: '%s' % val})
             time.sleep(INSERT_INTERVAL)  # sleep INSERT_INTERVAL seconds
 
-        print('Ended experiment: %s' % experiment['description'])
-        time.sleep(SLEEP_BETWEEN_EXPERIMENTS)
+        print('Ended experiment: %s.\n Sleeping for %d seconds before continuing\n' % (
+            experiment['description'], SLEEP_BETWEEN_EXPERIMENTS))
         current_result_index = None
         experiment_id = None
+        time.sleep(SLEEP_BETWEEN_EXPERIMENTS)
 
     # close the thread pool and wait for the work to finish
     continue_running_aggs = False
 
 
 def run_aggs(thread_number):
+
+    global continue_running_aggs
+    global current_result_index
+    global experiment_id
 
     print("Starting aggregation thread %d" % thread_number)
 
@@ -296,27 +320,30 @@ def run_aggs(thread_number):
             result=es.search(index=HIGH_HIGH_CARDINALITY_INDEX, doc_type='doc', body=request)
             print("Time for agg on thread %d is %d" % (thread_number, result['took']))
 
-        # Store the time for each aggregation into ES - but cache in an in-memory data structure
-        # to minimize the impact on the cluster.
-        if current_result_index and experiment_id:
-            action = {
-                '_index': current_result_index,
-                '_type': 'doc',
-                '_id': None,
-                '_source': {
-                    'took': result['took'],
-                    'timestamp': datetime.now(),
-                    'experiment_id': experiment_id
+            # Store the time for each aggregation into ES - but cache in an in-memory data structure
+            # to minimize the impact on the cluster. If current_result_index or experiment_id are not
+            # currently defined, then we are paused 'between' experiments, and don't store the data.
+            if current_result_index and experiment_id:
+                action = {
+                    '_index': current_result_index,
+                    '_type': 'doc',
+                    '_id': None,
+                    '_source': {
+                        'took': result['took'],
+                        'timestamp': datetime.now(),
+                        'experiment_id': experiment_id
+                    }
                 }
-            }
-            docs_for_bulk_insert.append(action)
+                print('Adding result doc %s' % action)
+                docs_for_bulk_insert.append(action)
 
-            # Wait a random amount of time between 0 and 2*INSERT_INTERVAL before running the next agg.
-            # This will result in one agg per aggregation thread (or a total of NUMBER_OF_AGGS_PER_INSERT_INTERVAL
-            # aggregations) for each new document insertion.
-            time.sleep(random.uniform(0, 2*INSERT_INTERVAL))
-        else:
-            # At the end of the experiment, write the experimental results (for all experiments) to the ES cluster
+                # Wait a random amount of time between 0 and 2*INSERT_INTERVAL before running the next agg.
+                # This will avg of one agg per aggregation thread (or a total of NUMBER_OF_AGGS_PER_INSERT_INTERVAL
+                # aggregations) for each new document insertion.
+                time.sleep(random.uniform(0, 2*INSERT_INTERVAL))
+
+        else:  # if !continue_running_aggs - then stop the experiment and write data to the cluster
+            # At the end of the experiment, write the experimental results to the ES cluster
             helpers.bulk(es, docs_for_bulk_insert)
             break
 
