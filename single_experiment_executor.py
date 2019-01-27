@@ -9,6 +9,7 @@ from elasticsearch import Elasticsearch
 from elasticsearch import helpers
 
 import global_vars
+import setup_experiments
 
 def run_aggs(es, thread_number, shared_state_for_threads):
 
@@ -50,7 +51,7 @@ def run_aggs(es, thread_number, shared_state_for_threads):
                 docs_for_bulk_insert.append(action)
 
                 # Wait a random amount of time before starting the next aggregation.
-                time.sleep(random.uniform(*global_vars.TIME_UNTIL_NEXT_AGG_IN_THREAD))
+                time.sleep(random.uniform(*setup_experiments.TIME_UNTIL_NEXT_AGG_IN_THREAD))
 
         else:  # if !continue_running_aggs - then stop the experiment and write data to the cluster
             # At the end of the experiment, write the experimental results to the ES cluster
@@ -110,12 +111,12 @@ def configure_index_and_run_background_inserts(es, experiment_obj, shared_state_
         # print("inserting doc with val=%s" % val)
         es.index(index=global_vars.HIGH_HIGH_CARDINALITY_INDEX, doc_type='doc', id=None,
                  body={global_vars.HIGH_CARDINALITY_FIELD: '%s' % val})
-        time.sleep(global_vars.INSERT_INTERVAL)  # sleep INSERT_INTERVAL seconds
+        time.sleep(setup_experiments.INSERT_INTERVAL)  # sleep INSERT_INTERVAL seconds
 
     print('Ended experiment: %s.\n Sleeping for %d seconds before continuing\n' % (
-        experiment_obj['description'], global_vars.SLEEP_BETWEEN_EXPERIMENTS))
+        experiment_obj['description'], setup_experiments.SLEEP_BETWEEN_EXPERIMENTS))
 
-    time.sleep(global_vars.SLEEP_BETWEEN_EXPERIMENTS)
+    time.sleep(setup_experiments.SLEEP_BETWEEN_EXPERIMENTS)
 
     # close the thread pool and wait for the work to finish
     shared_state_for_threads['continue_running_aggs'] = False
@@ -138,7 +139,7 @@ def run_experiment(experiment):
     my_threads.append(Thread(target=configure_index_and_run_background_inserts,
                              args=(es, experiment, shared_state_for_threads,)))
 
-    for x in range(0, global_vars.NUM_AGG_THREADS):
+    for x in range(0, setup_experiments.NUM_AGG_THREADS):
         my_threads.append(Thread(target=run_aggs, args=(es, x, shared_state_for_threads)))
 
     for t in my_threads:

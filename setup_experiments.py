@@ -2,7 +2,12 @@
 
 from datetime import datetime
 
-import global_vars
+SLEEP_BETWEEN_EXPERIMENTS = 5  # seconds to wait after completing an experiment before the next one
+
+INSERT_INTERVAL = 1  # During aggs experiment, wait 1s between inserts. Ensures recompute of global ordinals
+NUM_AGG_THREADS = 1  # X threads running parallel aggregations.
+TIME_UNTIL_NEXT_AGG_IN_THREAD = (0, 1)  # choose a random number in this range to wait before next agg on each thread
+
 
 def setup_cardinaltiy_experiment():
     

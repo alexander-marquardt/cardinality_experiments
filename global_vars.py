@@ -12,11 +12,6 @@ ES_HOST = 'localhost:9200'
 ES_USER = 'elastic'
 ES_PASSWORD = 'elastic'
 
-SLEEP_BETWEEN_EXPERIMENTS = 5  # seconds to wait after completing an experiment before the next one
-
-INSERT_INTERVAL = 1  # During aggs experiment, wait 1s between inserts. Ensures recompute of global ordinals
-NUM_AGG_THREADS = 1  # X threads running parallel aggregations.
-TIME_UNTIL_NEXT_AGG_IN_THREAD = (0, 1)  # choose a random number in this range to wait before next agg on each thread
 
 # Settings for the index which we run terms aggregations against. We disable caching to isolate the impact
 # of the global ordinals calculations.
