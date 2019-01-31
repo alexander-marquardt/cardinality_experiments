@@ -49,3 +49,17 @@ RESULT_INDICES_MAPPINGS = {
         }
     }
 }
+
+CLUSTER_SETTINGS_FOR_LOGGING = {
+  "transient": {
+    "logger": {
+      "org": {
+        "elasticsearch": {
+          "index": {
+            "fielddata": "TRACE"
+          }
+        }
+      }
+    }
+  }
+}

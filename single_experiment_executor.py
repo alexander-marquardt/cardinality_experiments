@@ -31,7 +31,7 @@ def run_aggs(es, thread_number, shared_state_for_threads):
                 }
             }
             # print("Thread %d executing search %s" % (thread_number, request))
-            result=es.search(index=configure_indices.HIGH_CARDINALITY_INDEX, doc_type='doc', body=request)
+            result=es.search(index=global_vars.HIGH_CARDINALITY_INDEX, doc_type='doc', body=request)
             # print("Time for agg on thread %d is %d" % (thread_number, result['took']))
 
             # Store the time for each aggregation into ES - but cache in an in-memory data structure
@@ -96,22 +96,22 @@ def configure_index_and_run_background_inserts(es, experiment_obj, shared_state_
 
     new_index_mappings = {
         'properties': {
-            configure_indices.HIGH_CARDINALITY_FIELD: {
+            global_vars.HIGH_CARDINALITY_FIELD: {
                 'type': 'keyword',
                 'eager_global_ordinals': experiment_obj['eager_global_ordinals']
             }
         }
     }
 
-    es.indices.put_settings(index=configure_indices.HIGH_CARDINALITY_INDEX, body=new_index_settings)
-    es.indices.put_mapping(doc_type='doc', index=configure_indices.HIGH_CARDINALITY_INDEX, body=new_index_mappings)
+    es.indices.put_settings(index=global_vars.HIGH_CARDINALITY_INDEX, body=new_index_settings)
+    es.indices.put_mapping(doc_type='doc', index=global_vars.HIGH_CARDINALITY_INDEX, body=new_index_mappings)
 
     while time.time() < start_time + experiment_duration_in_seconds:
         val = random.randint(0, global_vars.CARDINALITY_RANGE)
 
         # print("inserting doc with val=%s" % val)
-        es.index(index=configure_indices.HIGH_CARDINALITY_INDEX, doc_type='doc', id=None,
-                 body={configure_indices.HIGH_CARDINALITY_FIELD: '%s' % val})
+        es.index(index=global_vars.HIGH_CARDINALITY_INDEX, doc_type='doc', id=None,
+                 body={global_vars.HIGH_CARDINALITY_FIELD: '%s' % val})
         time.sleep(setup_experiments.INSERT_INTERVAL)  # sleep INSERT_INTERVAL seconds
 
     print('Ended experiment: %s.\n Sleeping for %d seconds before continuing\n' % (
