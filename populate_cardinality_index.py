@@ -8,6 +8,7 @@ from elasticsearch import Elasticsearch
 from elasticsearch import helpers
 
 import global_vars
+import configure_indices
 
 
 def bulk_insert_high_cardinality_documents():
@@ -19,8 +20,8 @@ def bulk_insert_high_cardinality_documents():
     es.indices.delete(index=global_vars.HIGH_HIGH_CARDINALITY_INDEX, ignore=[400, 404])
 
     request_body = {
-        'settings': global_vars.BASE_INDEX_SETTINGS,
-        'mappings': global_vars.BASE_INDEX_MAPPINGS
+        'settings': configure_indices.BASE_INDEX_SETTINGS,
+        'mappings': configure_indices.BASE_INDEX_MAPPINGS
     }
     es.indices.create(index=global_vars.HIGH_HIGH_CARDINALITY_INDEX, body=request_body)
 
