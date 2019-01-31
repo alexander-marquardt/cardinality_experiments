@@ -133,6 +133,7 @@ def run_experiment(experiment):
     }
 
     es = Elasticsearch([global_vars.ES_HOST], http_auth=(global_vars.ES_USER, global_vars.ES_PASSWORD))
+    es.cluster.put_settings(body=configure_indices.CLUSTER_SETTINGS_FOR_LOGGING)
 
     print("Spinning up threads for the experiment")
 
