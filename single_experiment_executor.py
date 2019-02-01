@@ -10,7 +10,7 @@ from elasticsearch import helpers
 
 import global_vars
 import setup_experiments
-import configure_indices
+import configure
 
 def run_aggs(es, thread_number, shared_state_for_threads):
 
@@ -31,7 +31,7 @@ def run_aggs(es, thread_number, shared_state_for_threads):
                 }
             }
             # print("Thread %d executing search %s" % (thread_number, request))
-            result=es.search(index=global_vars.HIGH_CARDINALITY_INDEX, doc_type='doc', body=request)
+            result=es.search(index=global_vars.HIGH_CARDINALITY_INDEX_NAME, doc_type='doc', body=request)
             # print("Time for agg on thread %d is %d" % (thread_number, result['took']))
 
             # Store the time for each aggregation into ES - but cache in an in-memory data structure
@@ -64,8 +64,8 @@ def run_aggs(es, thread_number, shared_state_for_threads):
 def configure_index_and_run_background_inserts(es, experiment_obj, shared_state_for_threads):
 
     request_body = {
-        'settings': configure_indices.RESULT_INDEX_SETTINGS,
-        'mappings': configure_indices.RESULT_INDICES_MAPPINGS
+        'settings': configure.RESULT_INDEX_SETTINGS,
+        'mappings': configure.RESULT_INDICES_MAPPINGS
     }
     es.indices.create(index=experiment_obj['result_index'], body=request_body)
 
@@ -96,22 +96,22 @@ def configure_index_and_run_background_inserts(es, experiment_obj, shared_state_
 
     new_index_mappings = {
         'properties': {
-            global_vars.HIGH_CARDINALITY_FIELD: {
+            global_vars.HIGH_CARDINALITY_FIELD_NAME: {
                 'type': 'keyword',
                 'eager_global_ordinals': experiment_obj['eager_global_ordinals']
             }
         }
     }
 
-    es.indices.put_settings(index=global_vars.HIGH_CARDINALITY_INDEX, body=new_index_settings)
-    es.indices.put_mapping(doc_type='doc', index=global_vars.HIGH_CARDINALITY_INDEX, body=new_index_mappings)
+    es.indices.put_settings(index=global_vars.HIGH_CARDINALITY_INDEX_NAME, body=new_index_settings)
+    es.indices.put_mapping(doc_type='doc', index=global_vars.HIGH_CARDINALITY_INDEX_NAME, body=new_index_mappings)
 
     while time.time() < start_time + experiment_duration_in_seconds:
         val = random.randint(0, global_vars.CARDINALITY_RANGE)
 
         # print("inserting doc with val=%s" % val)
-        es.index(index=global_vars.HIGH_CARDINALITY_INDEX, doc_type='doc', id=None,
-                 body={global_vars.HIGH_CARDINALITY_FIELD: '%s' % val})
+        es.index(index=global_vars.HIGH_CARDINALITY_INDEX_NAME, doc_type='doc', id=None,
+                 body={global_vars.HIGH_CARDINALITY_FIELD_NAME: '%s' % val})
         time.sleep(setup_experiments.INSERT_INTERVAL)  # sleep INSERT_INTERVAL seconds
 
     print('Ended experiment: %s.\n Sleeping for %d seconds before continuing\n' % (
@@ -133,7 +133,7 @@ def run_experiment(experiment):
     }
 
     es = Elasticsearch([global_vars.ES_HOST], http_auth=(global_vars.ES_USER, global_vars.ES_PASSWORD))
-    es.cluster.put_settings(body=configure_indices.CLUSTER_SETTINGS_FOR_LOGGING)
+    es.cluster.put_settings(body=configure.CLUSTER_SETTINGS_FOR_LOGGING_GLOBAL_ORDINAL_TIME)
 
     print("Spinning up threads for the experiment")
 

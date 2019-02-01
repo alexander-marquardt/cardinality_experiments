@@ -11,5 +11,5 @@ ES_USER = 'elastic'
 ES_PASSWORD = 'elastic'
 
 
-HIGH_CARDINALITY_INDEX = 'high_cardinality_experiment'
-HIGH_CARDINALITY_FIELD = 'high_cardinality_field'
+HIGH_CARDINALITY_INDEX_NAME = 'high_cardinality_experiment'
+HIGH_CARDINALITY_FIELD_NAME = 'high_cardinality_field'

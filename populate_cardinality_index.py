@@ -8,7 +8,7 @@ from elasticsearch import Elasticsearch
 from elasticsearch import helpers
 
 import global_vars
-import configure_indices
+import configure
 
 
 def bulk_insert_high_cardinality_documents():
@@ -16,14 +16,14 @@ def bulk_insert_high_cardinality_documents():
 
     es = Elasticsearch([global_vars.ES_HOST], http_auth=(global_vars.ES_USER, global_vars.ES_PASSWORD))
 
-    print("Deleting index %s" % global_vars.HIGH_HIGH_CARDINALITY_INDEX)
-    es.indices.delete(index=global_vars.HIGH_HIGH_CARDINALITY_INDEX, ignore=[400, 404])
+    print("Deleting index %s" % global_vars.HIGH_CARDINALITY_INDEX_NAME)
+    es.indices.delete(index=global_vars.HIGH_CARDINALITY_INDEX_NAME, ignore=[400, 404])
 
     request_body = {
-        'settings': configure_indices.BASE_INDEX_SETTINGS,
-        'mappings': configure_indices.BASE_INDEX_MAPPINGS
+        'settings': configure.CARDINALITY_INDEX_SETTINGS_FOR_POPULATE,
+        'mappings': configure.CARDINALITY_INDEX_MAPPINGS_FOR_POPULATE,
     }
-    es.indices.create(index=global_vars.HIGH_HIGH_CARDINALITY_INDEX, body=request_body)
+    es.indices.create(index=global_vars.HIGH_CARDINALITY_INDEX_NAME, body=request_body)
 
     # docs_for_bulk_insert - an array to collect documents for bulk insertion
     docs_for_bulk_insert = []
@@ -37,11 +37,11 @@ def bulk_insert_high_cardinality_documents():
         # the docs_for_bulk_insert list.
         val = random.randint(1, global_vars.CARDINALITY_RANGE)
         action = {
-            '_index': global_vars.HIGH_HIGH_CARDINALITY_INDEX,
+            '_index': global_vars.HIGH_CARDINALITY_INDEX_NAME,
             '_type': 'doc',
             '_id': None,
             '_source': {
-                global_vars.HIGH_CARDINALITY_FIELD: '%s' % val,
+                global_vars.HIGH_CARDINALITY_FIELD_NAME: '%s' % val,
                 'timestamp': datetime.now()
                 }
             }
