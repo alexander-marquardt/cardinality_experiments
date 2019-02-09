@@ -1,9 +1,11 @@
-#!/usr/local/bin/python
+#!/usr/local/bin/python3
 import argparse
-from datetime import datetime
+import time
+import datetime
+
+import setup_experiments
 
 from single_experiment_executor import run_experiment
-from setup_experiments import setup_cardinaltiy_experiment
 from populate_cardinality_index import bulk_insert_high_cardinality_documents
 
 """
@@ -60,7 +62,7 @@ def initial_setup():
 # of the global ordinals.
 def step_through_experiment_configurations():
 
-    experiments_to_run = setup_cardinaltiy_experiment()
+    experiments_to_run = setup_experiments.setup_cardinaltiy_experiment()
 
     print("Starting experiment configuration control thread\n")
     for experiment in experiments_to_run:
@@ -73,6 +75,9 @@ def main():
 
     if args.mode == 'all' or args.mode == 'populate_only':
         bulk_insert_high_cardinality_documents()
+        print("%s Sleeping for %s after inserting documents to ensure all writes are flushed\n" %
+              (datetime.datetime.now().isoformat(), setup_experiments.SLEEP_BETWEEN_EXPERIMENTS))
+        time.sleep(setup_experiments.SLEEP_BETWEEN_EXPERIMENTS)
 
     if args.mode == 'all' or args.mode == 'experiments_only':
         step_through_experiment_configurations()

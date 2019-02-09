@@ -1,8 +1,8 @@
-#!/usr/local/bin/python
+#!/usr/local/bin/python3
 
 import random
+import datetime
 
-from datetime import datetime
 
 from elasticsearch import Elasticsearch
 from elasticsearch import helpers
@@ -15,6 +15,7 @@ def bulk_insert_high_cardinality_documents():
     # We will insert CARDINALITY_RANGE documents. Each doc will have a random string.
 
     es = Elasticsearch([global_vars.ES_HOST], http_auth=(global_vars.ES_USER, global_vars.ES_PASSWORD))
+    es.cluster.put_settings(body=configure.CLUSTER_SETTINGS_FOR_LOGGING_GLOBAL_ORDINAL_TOOK_TIME)
 
     print("Deleting index %s" % global_vars.HIGH_CARDINALITY_INDEX_NAME)
     es.indices.delete(index=global_vars.HIGH_CARDINALITY_INDEX_NAME, ignore=[400, 404])
@@ -30,8 +31,8 @@ def bulk_insert_high_cardinality_documents():
     # bulk_counter - track how many documents are in the actions array
     bulk_counter = 0
 
-    print("Starting bulk insertion of documents")
-    for n in range(0, global_vars.CARDINALITY_RANGE):
+    print("%s Starting bulk insertion of documents\n" % datetime.datetime.now().isoformat())
+    for n in range(0, global_vars.NUMBER_OF_DOCUMENTS_TO_INSERT):
 
         # Generate a new document with a random string from 0..CARDINALITY_RANGE-1, and store it into
         # the docs_for_bulk_insert list.
@@ -42,7 +43,7 @@ def bulk_insert_high_cardinality_documents():
             '_id': None,
             '_source': {
                 global_vars.HIGH_CARDINALITY_FIELD_NAME: '%s' % val,
-                'timestamp': datetime.now()
+                'timestamp': datetime.datetime.now()
                 }
             }
         docs_for_bulk_insert.append(action)
@@ -54,5 +55,10 @@ def bulk_insert_high_cardinality_documents():
             docs_for_bulk_insert = []
             bulk_counter = 0
 
-    # before leaving this function, ensure that all data has been flushed
-    es.indices.refresh(index=global_vars.HIGH_HIGH_CARDINALITY_INDEX)
+    # before leaving this function, ensure that all data has been flushed and set to a reasonable default
+    es.indices.put_settings(index=global_vars.HIGH_CARDINALITY_INDEX_NAME,
+                            body=configure.CARDINALITY_INDEX_SETTINGS_AFTER_POPULATE)
+    es.indices.put_mapping(doc_type='doc', index=global_vars.HIGH_CARDINALITY_INDEX_NAME,
+                           body=configure.CARDINALITY_INDEX_MAPPINGS_AFTER_POPULATE)
+    es.indices.refresh(index=global_vars.HIGH_CARDINALITY_INDEX_NAME)
+    print("%s Ended bulk insertion of documents\n" % datetime.datetime.now().isoformat())

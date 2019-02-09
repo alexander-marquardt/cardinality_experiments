@@ -1,9 +1,9 @@
-#!/usr/local/bin/python
+#!/usr/local/bin/python3
 
 import random
 import time
 from threading import Thread
-from datetime import datetime
+import datetime
 
 from elasticsearch import Elasticsearch
 from elasticsearch import helpers
@@ -44,7 +44,7 @@ def run_aggs(es, thread_number, shared_state_for_threads):
                     '_id': None,
                     '_source': {
                         'took': result['took'],
-                        'timestamp': datetime.now(),
+                        'timestamp': datetime.datetime.now(),
                         'experiment_id': shared_state_for_threads['experiment_id']
                     }
                 }
@@ -70,8 +70,8 @@ def configure_index_and_run_background_inserts(es, experiment_obj, shared_state_
     es.indices.create(index=experiment_obj['result_index'], body=request_body)
 
     experiment_duration_in_seconds = experiment_obj['experiment_duration_in_seconds']
-    print("Running experiment: %s for %d seconds\n" %
-          (experiment_obj['description'], experiment_duration_in_seconds))
+    print("%s Running experiment: %s for %d seconds\n" %
+          (datetime.datetime.now().isoformat(), experiment_obj['description'], experiment_duration_in_seconds))
 
     start_time = time.time()
 
@@ -114,8 +114,8 @@ def configure_index_and_run_background_inserts(es, experiment_obj, shared_state_
                  body={global_vars.HIGH_CARDINALITY_FIELD_NAME: '%s' % val})
         time.sleep(setup_experiments.INSERT_INTERVAL)  # sleep INSERT_INTERVAL seconds
 
-    print('Ended experiment: %s.\n Sleeping for %d seconds before continuing\n' % (
-        experiment_obj['description'], setup_experiments.SLEEP_BETWEEN_EXPERIMENTS))
+    print('%s Ended experiment: %s.\n Sleeping for %d seconds before continuing\n' % (
+        datetime.datetime.now().isoformat(),  experiment_obj['description'], setup_experiments.SLEEP_BETWEEN_EXPERIMENTS))
 
     time.sleep(setup_experiments.SLEEP_BETWEEN_EXPERIMENTS)
 
@@ -133,9 +133,9 @@ def run_experiment(experiment):
     }
 
     es = Elasticsearch([global_vars.ES_HOST], http_auth=(global_vars.ES_USER, global_vars.ES_PASSWORD))
-    es.cluster.put_settings(body=configure.CLUSTER_SETTINGS_FOR_LOGGING_GLOBAL_ORDINAL_TIME)
+    es.cluster.put_settings(body=configure.CLUSTER_SETTINGS_FOR_LOGGING_GLOBAL_ORDINAL_TOOK_TIME)
 
-    print("Spinning up threads for the experiment")
+    print("%s Spinning up threads for the experiment" % datetime.datetime.now().isoformat())
 
     my_threads=[]
     my_threads.append(Thread(target=configure_index_and_run_background_inserts,
