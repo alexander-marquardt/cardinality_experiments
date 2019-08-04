@@ -1,4 +1,4 @@
-#!/Users/alexandermarquardt/PycharmProjects/Cardinality-Python3/venv/bin/python
+#!/Users/arm/PycharmProjects/cardinality_experiments/venv/bin/python
 # EASY-INSTALL-ENTRY-SCRIPT: 'pip==10.0.1','console_scripts','pip'
 __requires__ = 'pip==10.0.1'
 import re

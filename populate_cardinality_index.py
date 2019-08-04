@@ -39,7 +39,6 @@ def bulk_insert_high_cardinality_documents():
         val = random.randint(1, global_vars.CARDINALITY_RANGE)
         action = {
             '_index': global_vars.HIGH_CARDINALITY_INDEX_NAME,
-            '_type': 'doc',
             '_id': None,
             '_source': {
                 global_vars.HIGH_CARDINALITY_FIELD_NAME: '%s' % val,
@@ -58,7 +57,7 @@ def bulk_insert_high_cardinality_documents():
     # before leaving this function, ensure that all data has been flushed and set to a reasonable default
     es.indices.put_settings(index=global_vars.HIGH_CARDINALITY_INDEX_NAME,
                             body=configure.CARDINALITY_INDEX_SETTINGS_AFTER_POPULATE)
-    es.indices.put_mapping(doc_type='doc', index=global_vars.HIGH_CARDINALITY_INDEX_NAME,
+    es.indices.put_mapping(index=global_vars.HIGH_CARDINALITY_INDEX_NAME,
                            body=configure.CARDINALITY_INDEX_MAPPINGS_AFTER_POPULATE)
     es.indices.refresh(index=global_vars.HIGH_CARDINALITY_INDEX_NAME)
     print("%s Ended bulk insertion of documents\n" % datetime.datetime.now().isoformat())

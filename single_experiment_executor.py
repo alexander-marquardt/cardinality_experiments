@@ -104,13 +104,13 @@ def configure_index_and_run_background_inserts(es, experiment_obj, shared_state_
     }
 
     es.indices.put_settings(index=global_vars.HIGH_CARDINALITY_INDEX_NAME, body=new_index_settings)
-    es.indices.put_mapping(doc_type='doc', index=global_vars.HIGH_CARDINALITY_INDEX_NAME, body=new_index_mappings)
+    es.indices.put_mapping(index=global_vars.HIGH_CARDINALITY_INDEX_NAME, body=new_index_mappings)
 
     while time.time() < start_time + experiment_duration_in_seconds:
         val = random.randint(0, global_vars.CARDINALITY_RANGE)
 
         # print("inserting doc with val=%s" % val)
-        es.index(index=global_vars.HIGH_CARDINALITY_INDEX_NAME, doc_type='doc', id=None,
+        es.index(index=global_vars.HIGH_CARDINALITY_INDEX_NAME, id=None,
                  body={global_vars.HIGH_CARDINALITY_FIELD_NAME: '%s' % val})
         time.sleep(setup_experiments.INSERT_INTERVAL)  # sleep INSERT_INTERVAL seconds
 

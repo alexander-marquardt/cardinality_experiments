@@ -25,16 +25,14 @@ CARDINALITY_INDEX_SETTINGS_FOR_POPULATE = {
 }
 
 CARDINALITY_INDEX_MAPPINGS_FOR_POPULATE = {
-    'doc': {
-        'properties': {
-            'timestamp': {
-                'type': 'date'
-            },
-            global_vars.HIGH_CARDINALITY_FIELD_NAME: {
-                'type': 'keyword',
-                'ignore_above': 256,
-                'eager_global_ordinals': True # the default is False, set it explicitly here
-            }
+    'properties': {
+        'timestamp': {
+            'type': 'date'
+        },
+        global_vars.HIGH_CARDINALITY_FIELD_NAME: {
+            'type': 'keyword',
+            'ignore_above': 256,
+            'eager_global_ordinals': True # the default is False, set it explicitly here
         }
     }
 }
@@ -46,13 +44,11 @@ CARDINALITY_INDEX_SETTINGS_AFTER_POPULATE = {
 }
 
 CARDINALITY_INDEX_MAPPINGS_AFTER_POPULATE = {
-    'doc': {
-        'properties': {
-            global_vars.HIGH_CARDINALITY_FIELD_NAME: {
-                'type': 'keyword',
-                'ignore_above': 256,
-                'eager_global_ordinals': False  # the default is False, set it explicitly here
-            }
+    'properties': {
+        global_vars.HIGH_CARDINALITY_FIELD_NAME: {
+            'type': 'keyword',
+            'ignore_above': 256,
+            'eager_global_ordinals': False  # the default is False, set it explicitly here
         }
     }
 }
@@ -66,18 +62,16 @@ RESULT_INDEX_SETTINGS = {
 }
 
 RESULT_INDICES_MAPPINGS = {
-    'doc': {
-        'properties': {
-            'timestamp': {
-                'type': 'date'
-            },
-            'took': {
-                'type': 'long',
-            },
-            'experiment_id': {
-                'type': 'keyword',
-                'ignore_above': 256
-            }
+    'properties': {
+        'timestamp': {
+            'type': 'date'
+        },
+        'took': {
+            'type': 'long',
+        },
+        'experiment_id': {
+            'type': 'keyword',
+            'ignore_above': 256
         }
     }
 }
