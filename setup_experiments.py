@@ -18,7 +18,7 @@ def setup_cardinaltiy_experiment():
 
     FAST_REFRESH = 1  # in experiment mode, every X second do a segment refresh (buffer flush)
     SLOW_REFRESH = 60  # in experiment mode, every X seconds do a segment refresh (buffer flush)
-    EXPERIMENT_DURATION = 10  # Each experiment will last this many seconds. Note that we execute multiple experiments.
+    EXPERIMENT_DURATION = 5  # Each experiment will last this many seconds. Note that we execute multiple experiments.
 
     EXPERIMENT_PARAMETERS = [{"refresh_interval":  '%ds' % FAST_REFRESH,
                               "eager_global_ordinals": False,

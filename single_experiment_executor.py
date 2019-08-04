@@ -31,7 +31,7 @@ def run_aggs(es, thread_number, shared_state_for_threads):
                 }
             }
             # print("Thread %d executing search %s" % (thread_number, request))
-            result=es.search(index=global_vars.HIGH_CARDINALITY_INDEX_NAME, doc_type='doc', body=request)
+            result=es.search(index=global_vars.HIGH_CARDINALITY_INDEX_NAME, body=request)
             # print("Time for agg on thread %d is %d" % (thread_number, result['took']))
 
             # Store the time for each aggregation into ES - but cache in an in-memory data structure
@@ -40,7 +40,6 @@ def run_aggs(es, thread_number, shared_state_for_threads):
             if shared_state_for_threads['current_result_index'] and shared_state_for_threads['experiment_id']:
                 action = {
                     '_index': shared_state_for_threads['current_result_index'],
-                    '_type': 'doc',
                     '_id': None,
                     '_source': {
                         'took': result['took'],
