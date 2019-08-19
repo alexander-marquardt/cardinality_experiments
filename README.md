@@ -9,8 +9,8 @@ This code is designed to test the impact of "global ordinals" and "refresh" on h
 By default, global ordinals are built "lazily" on the first aggregation since the previous refresh, 
 which can impact the performance of that first aggregation between refreshes. 
 
-This code is designed to quantify the impact of the refresh interval and global ordinals. We generate documents with 
-a high-cardinality field which we will run a term aggregation to compare the impact of eager and lazy ordinals.
+This code is designed to quantify the impact of the refresh interval and calculation of global ordinals. 
+We generate documents with a high-cardinality field which we will run a term aggregations on, to compare the impact of eager and lazy ordinals.
 
 The code consists of two parts, which can be enabled separately or together through command line parameters. 
 1. The bulk insertion of million(s) of high-cardinality entries. This is done as quickly as 
