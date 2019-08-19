@@ -13,9 +13,9 @@ This code is designed to quantify the impact of the refresh interval and global 
 a high-cardinality field which we will run a term aggregation to compare the impact of eager and lazy ordinals.
 
 The code consists of two parts, which can be enabled separately or together through command line parameters. 
-(1) The bulk insertion of million(s) of high-cardinality entries. This is done as quickly as 
+1. The bulk insertion of million(s) of high-cardinality entries. This is done as quickly as 
 possible using bulk inserts and without any concurrent queries or aggregations. 
-(2) The actual experiment which runs aggregations on the high-cardinality entries. In order to ensure that
+2. The actual experiment which runs aggregations on the high-cardinality entries. In order to ensure that
 the global ordinals are being rebuilt (either greedily or lazily depending on the experiment), we still insert 
 documents into the index, but at a much slower rate so as to minimize the impact of the insertions on Elasticsearch,
 which isolates the impact of the building of the global ordinals on the aggregation performance. 
