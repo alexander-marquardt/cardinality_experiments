@@ -2,7 +2,7 @@
 This code was written to investigate and better understand the performance of high-cardinality terms aggregations and the impact of [global ordinals](https://www.elastic.co/guide/en/elasticsearch/reference/7.3/eager-global-ordinals.html) in Elasticsearch. 
 
 # Blog article on Elastic.co
-The results of these experiments are described at: https://www.elastic.co/blog/improving-the-performance-of-high-cardinality-terms-aggregations-in-elasticsearch
+The results of these experiments is documented in a [blog article on elastic.co](https://www.elastic.co/blog/improving-the-performance-of-high-cardinality-terms-aggregations-in-elasticsearch).
 
 # Description
 This code is designed to test the impact of "global ordinals" and "refresh" on high cardinality aggregations.
